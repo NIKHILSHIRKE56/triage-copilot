@@ -1,0 +1,23 @@
+﻿[
+  {
+    "ticket_id": "DNO-1042",
+    "title": "Nomad eSIM Provisioning 504 Gateway Timeout on SM-DP+ Activation",
+    "category": "eSIM Provisioning / API",
+    "content": "Symptom: HTTP 504 Gateway Timeout from /v2/esim/activate with java.net.SocketTimeoutException in EsimProvisioningService. Root Cause: Upstream carrier SM-DP+ server latency exceeds the 10-second Feign client timeout during peak travel hours, leaving the order stuck in PROVISIONING_PENDING while payment is already CAPTURED. Resolution: 1) Verify order state in esim_orders table. 2) Check SM-DP+ callback queue for delayed ICCID allocation. 3) Trigger idempotent retry via /internal/v2/esim/reconcile rather than issuing a duplicate order.",
+    "sql_check": "SELECT order_id, subscriber_id, iccid, status, payment_status, updated_at FROM esim_orders WHERE status = 'PROVISIONING_PENDING' AND updated_at < NOW() - INTERVAL '5 minutes';"
+  },
+  {
+    "ticket_id": "DNO-1189",
+    "title": "PostgreSQL Deadlock Detected During Concurrent Subscription Renewal",
+    "category": "Billing / Database",
+    "content": "Symptom: org.postgresql.util.PSQLException: ERROR: deadlock detected (SQLState 40P01) in BillingCycleWorker. Root Cause: Auto-renewal batch job and real-time subscriber top-up API attempt to lock rows in wallet_balances and active_subscriptions in opposite orders. Resolution: 1) Confirm failed renewal job is queued in dead_letter_billing_events. 2) Verify no double-charge occurred in payment_transactions. 3) Replay the failed renewal event once the conflicting transaction clears.",
+    "sql_check": "SELECT subscriber_id, COUNT(*), SUM(amount) FROM payment_transactions WHERE created_at > NOW() - INTERVAL '1 hour' GROUP BY subscriber_id HAVING COUNT(*) > 1;"
+  },
+  {
+    "ticket_id": "DNO-1255",
+    "title": "MNP Port-In Validation Failure (HTTP 422 Unprocessable Entity)",
+    "category": "MNP / Carrier Integration",
+    "content": "Symptom: HTTP 422 Unprocessable Entity on POST /v1/mnp/port-in with error code MNP_DONOR_REJECT_402 and IllegalArgumentException in PortInValidator. Root Cause: Donor carrier rejected the porting request due to mismatched account PIN or inactive MSISDN status at the donor network. Resolution: 1) Inspect mnp_requests audit payload for donor rejection code. 2) Do not retry automatically (causes donor rate-limit). 3) Notify B2B2C enterprise partner to prompt the subscriber to re-verify their donor account PIN.",
+    "sql_check": "SELECT request_id, msisdn, donor_carrier, rejection_code, created_at FROM mnp_requests WHERE status = 'REJECTED' ORDER BY created_at DESC LIMIT 10;"
+  }
+]
